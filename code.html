@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>City Explorer</title>
+    <script src="https://js.api.here.com/v3/3.1/mapsjs-core.js"></script>
+    <script src="https://js.api.here.com/v3/3.1/mapsjs-service.js"></script>
+    <script src="https://js.api.here.com/v3/3.1/mapsjs-mapevents.js"></script>
+    <script src="https://js.api.here.com/v3/3.1/mapsjs-ui.js"></script>
+    <link rel="stylesheet" href="https://js.api.here.com/v3/3.1/mapsjs-ui.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f8f9fa;
+        }
+
+        #header {
+            background-color: #007bff;
+            color: #fff;
+            padding: 10px 0;
+            text-align: center;
+        }
+
+        #map-container {
+            height: 70vh;
+            margin: 20px;
+            position: relative;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            border-radius: 10px;
+        }
+
+        #search-container {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        #search-input {
+            width: 300px;
+            padding: 8px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+        }
+
+        #search-btn {
+            padding: 8px 16px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #search-btn:hover {
+            background-color: #0056b3;
+        }
+
+        #distance-info {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>City Explorer</h1>
+        <p>Discover the hidden gems of our city with guided tours, historical insights, and interactive maps.</p>
+    </div>
+    <div id="map-container">
+        <div id="search-container">
+            <input type="text" id="search-input" placeholder="Search for a location">
+            <button id="search-btn" onclick="searchLocation()">Search</button>
+        </div>
+        <div id="map"></div>
+    </div>
+    <div id="distance-info"></div>
+
+    <script>
+        var platform = new H.service.Platform({
+            'apikey': 'kvmRZD2v5zoIUmyBTPIFBGiUYNPw4BQfToxLSod10qM'
+        });
+
+        var defaultLayers = platform.createDefaultLayers();
+        var map = new H.Map(
+            document.getElementById('map'),
+            defaultLayers.vector.normal.map,
+            {
+                zoom: 12,
+                center: { lat: 41.902156, lng: 12.453311 }
+            });
+
+        var behavior = new H.mapevents.Behavior(new H.mapevents.MapEvents(map));
+        var service = platform.getSearchService();
+        var distanceInfo = document.getElementById('distance-info');
+
+        function searchLocation() {
+            var searchTerm = document.getElementById('search-input').value;
+            if (searchTerm.trim() !== '') {
+                service.geocode({
+                    q: searchTerm
+                }, (result) => {
+                    if (result.items.length > 0) {
+                        var position = result.items[0].position;
+                        map.setCenter(position);
+                        map.setZoom(14);
+
+                        // Get user's current location
+                        navigator.geolocation.getCurrentPosition((pos) => {
+                            var userLatLng = {
+                                lat: pos.coords.latitude,
+                                lng: pos.coords.longitude
+                            };
+
+                            // Calculate distance between user's location and searched location
+                            var distance = calculateDistance(userLatLng, position);
+
+                            // Display distance information
+                            distanceInfo.textContent = 'Distance from your location: ' + distance.toFixed(2) + ' km';
+                        });
+
+                        // Search for nearby monuments
+                        searchNearbyMonuments(position);
+                    } else {
+                        alert('Location not found');
+                    }
+                }, alert);
+            }
+        }
+
+        // Function to calculate distance between two points using Haversine formula
+        function calculateDistance(point1, point2) {
+            var rad = Math.PI / 180;
+            var dLat = (point2.lat - point1.lat) * rad;
+            var dLon = (point2.lng - point1.lng) * rad;
+            var lat1 = point1.lat * rad;
+            var lat2 = point2.lat * rad;
+
+            var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
+            var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            var R = 6371; // Radius of the Earth in kilometers
+            return R * c;
+        }
+
+        function searchNearbyMonuments(position) {
+            var params = {
+                at: position.lat + ',' + position.lng,
+                cat: 'sights-museums'
+            };
+
+            service.browse(params, (result) => {
+                result.items.forEach((item) => {
+                    var marker = new H.map.Marker(item.position);
+                    marker.setData({
+                        title: item.title,
+                        vicinity: item.vicinity
+                    });
+                    map.addObject(marker);
+
+                    // Add event listener to the marker
+                    marker.addEventListener('tap', function(evt) {
+                        var bubble = new H.ui.InfoBubble(evt.target.getGeometry(), {
+                            content: '<div><h4>' + evt.target.getData().title + '</h4><p>' + evt.target.getData().vicinity + '</p></div>'
+                        });
+                        ui.addBubble(bubble);
+                    });
+                });
+            }, alert);
+        }
+    </script>
+</body>
+</html>
